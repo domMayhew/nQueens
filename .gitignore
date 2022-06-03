@@ -1,3 +1,2 @@
-*
-!*.hs
-!.stack-work
+*.o
+*.exe
