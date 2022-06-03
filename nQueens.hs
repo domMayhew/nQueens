@@ -127,28 +127,29 @@ dimensions = Template 1 10 10
 zoom :: Int -> Template -> Template
 zoom n d = Template (border d * n) (squareSize d * n) (padding d * n)
 
+translate :: Int -> Int -> Picture -> Picture
+translate x y (Picture pic w h) = Picture (\(x', y') -> pic (x'-x, y'-y)) w h
+
+
 -- Creates a picture of a board with borders between each cell, around the entire board,
 -- and padding around the outside border.
 boardPic :: Template -> Board -> Picture
-boardPic d b = Picture f picSize picSize
+boardPic d b = translate (padding d - border d) (padding d - border d) (Picture f picSize picSize)
   where f (x,y)
-          -- Left padding and border
-          | x < padding d = topLeftPadding x
-          -- Top padding and border
-          | y < padding d = topLeftPadding y
+          -- Horizontal padding
+          | x < 0 || x >= picSizeNoPadding = white
+          -- Vertical padding
+          | y < 0 || y >= picSizeNoPadding = white
           -- Horizontal dividing borders
           | (x `mod` (squareSize d + border d)) < border d = black
           -- Vertical dividing borders
           | (y `mod` (squareSize d + border d)) < border d = black
-          -- Queens. Be aware that if the image being rendered is larger than the size of the board,
-            -- It's better to have checks for x > picSize, y > picSize so that `queens b` isn't called
-            -- unnecessarily. In this module, however, each picture should never receive coordinates >= picSize
+          -- Queens.
           | (x `div` (border d + squareSize d),y `div` (border d + squareSize d)) `elem` queens b = red
-          -- It's not a queen or border.
+          -- Empty spaces
           | otherwise = white
-          -- topLeftPadding only works if n < padding
-          where topLeftPadding n = if n >= padding d - border d then black else white
-        picSize = size b * (border d + squareSize d) + border d + padding d * 2
+        picSize = size b * (squareSize d + border d) - border d + 2 * padding d
+        picSizeNoPadding = size b * (border d + squareSize d) + border d
 
 -- Creates a picture of a board with an external border and padding,
 -- but no borders between cells.
@@ -156,11 +157,19 @@ boardPic d b = Picture f picSize picSize
 boardPicSimple :: Int -> Board -> Picture
 boardPicSimple squareSize b = Picture pic picSize picSize
   where pic (x,y)
-          | x == squareSize - 1 || y == squareSize -1 = black
-          | x == squareSize * (size b + 1) || y == squareSize * (size b + 1) = black
+          -- Horizontal padding
+          | x < squareSize - 1 || x >= squareSize + size b * squareSize + 1 = white
+          -- Vertical padding
+          | y < squareSize - 1 || y >= squareSize + size b * squareSize + 1 = white
+          -- Left and right borders
+          | x < squareSize || x == squareSize * (size b + 1) = black
+          -- Top and bottom borders
+          | y < squareSize || y == squareSize * (size b + 1) = black
+          -- Queens
           | (div x squareSize - 1,div y squareSize - 1) `elem` queens b = red
+          -- Empty spaces
           | otherwise = white
-        picSize = (size b + 1) * squareSize + 2
+        picSize = (size b + 2) * squareSize
 
 
 -- Combines a list of boards into a grid using the given picture factory function.
@@ -193,4 +202,4 @@ unaryRoundUp op x = ceiling . op $ fromIntegral x
 
 -- Render results for a board size.
 main :: IO ()
-main = print . length $ results 12
+main = renderResults (boardPic dimensions) 8 "./images/results8.png"
