@@ -2,6 +2,7 @@ import Data.List
 import Data.Ord
 import Codec.Picture
 import Data.List.NonEmpty (NonEmpty ((:|)))
+import System.Environment (getArgs)
 
 ----------------------------------------------------------------
 -- Finding the Solutions
@@ -202,4 +203,9 @@ unaryRoundUp op x = ceiling . op $ fromIntegral x
 
 -- Render results for a board size.
 main :: IO ()
-main = renderResults (boardPic dimensions) 8 "./images/results8.png"
+main = do
+  args <- getArgs
+  renderResults
+    (if length args > 1 && args !! 1 == "simple" then boardPicSimple 2 else boardPic dimensions)
+    (read $ head args)
+    ("./images/results" ++ head args ++ ".png")
