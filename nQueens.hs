@@ -1,6 +1,7 @@
 import Data.List
 import Data.Ord
 import Codec.Picture
+import Data.List.NonEmpty (NonEmpty ((:|)))
 
 ----------------------------------------------------------------
 -- Finding the Solutions
@@ -114,106 +115,94 @@ black = Color 0 0 0
 white = Color 255 255 255
 red = Color 255 0 0
 
-type Picture = Coord -> Color
+-- Picture f w h
+data Picture = Picture (Coord -> Color) Int Int
+apply :: Coord -> Picture -> Color
+apply coord (Picture f _ _) = f coord
 
-render :: Picture -> Int -> Int -> String -> IO ()
-render picture w h name = writePng name (generateImage (\x y -> colorToPixel (picture (x,y))) w h)
+render :: Picture -> String -> IO ()
+render (Picture f w h) name = writePng name (generateImage (\x y -> colorToPixel (f (x,y))) w h)
   where colorToPixel :: Color -> PixelRGB8
         colorToPixel (Color r g b) = PixelRGB8 (fromIntegral r) (fromIntegral g) (fromIntegral b)
 
-data Dimensions = Dimensions {border :: Int, squareSize :: Int, padding :: Int}
-dimensions = Dimensions 2 20 20
+-- Dimensions used by a picture factory function.
+-- border: width of borders around each cell, or around whole image
+-- squareSize: width & height of each square on the board
+-- padding: white space surrounding the board
+data Template = Template {border :: Int, squareSize :: Int, padding :: Int}
 
-totalWidth :: Int -> Dimensions -> Int
-totalWidth squares d = widthNoPadding squares d + padding d * 2
+-- Default dimensions
+dimensions :: Template
+dimensions = Template 1 10 10
 
-widthNoPadding :: Int -> Dimensions -> Int
-widthNoPadding squares d = squares * (border d + squareSize d) + border d
+-- Helper function. Not currently used in this module.
+zoom :: Int -> Template -> Template
+zoom n d = Template (border d * n) (squareSize d * n) (padding d * n)
 
-boardPic :: Dimensions -> Board -> Picture
-boardPic d b = translate (padding d) (padding d) pic
-  where pic (x,y)
-          -- Left and top padding
-          | x < 0 || y < 0 = white
-          -- Right overflow
-          | x >= picSize = white
-          -- Bottom overflow
-          | y >= picSize = white
-          -- Left and top borders
-          | x < border d || y < border d = black
+-- Creates a picture of a board with borders between each cell, around the entire board,
+-- and padding around the outside border.
+boardPic :: Template -> Board -> Picture
+boardPic d b = Picture f picSize picSize
+  where f (x,y)
+          -- Left padding and border
+          | x < padding d = topLeftPadding x
+          -- Top padding and border
+          | y < padding d = topLeftPadding y
           -- Horizontal dividing borders
           | (x `mod` (squareSize d + border d)) < border d = black
           -- Vertical dividing borders
           | (y `mod` (squareSize d + border d)) < border d = black
-          -- Queens
+          -- Queens. Be aware that if the image being rendered is larger than the size of the board,
+            -- It's better to have checks for x > picSize, y > picSize so that `queens b` isn't called
+            -- unnecessarily. In this module, however, each picture should never receive coordinates >= picSize
           | (x `div` (border d + squareSize d),y `div` (border d + squareSize d)) `elem` queens b = red
+          -- It's not a queen or border.
           | otherwise = white
-        picSize = widthNoPadding (size b) d
+          -- topLeftPadding only works if n < padding
+          where topLeftPadding n = if n >= padding d - border d then black else white
+        picSize = size b * (border d + squareSize d) + border d + padding d * 2
 
+-- Creates a picture of a board with an external border and padding,
+-- but no borders between cells.
+-- The border is 1px. The only customizable dimension is the size of each square.
 boardPicSimple :: Int -> Board -> Picture
-boardPicSimple squareSize b = pic
+boardPicSimple squareSize b = Picture pic picSize picSize
   where pic (x,y)
           | x == squareSize - 1 || y == squareSize -1 = black
           | x == squareSize * (size b + 1) || y == squareSize * (size b + 1) = black
           | (div x squareSize - 1,div y squareSize - 1) `elem` queens b = red
           | otherwise = white
+        picSize = (size b + 1) * squareSize + 2
 
-zoom :: Int -> Dimensions -> Dimensions
-zoom n d = Dimensions (border d * n) (squareSize d * n) (padding d * n)
 
-combineColor (Color 0 0 0) c = c
-combineColor c (Color 0 0 0) = c
-combineColor (Color 255 255 255) c = c
-combineColor c (Color 255 255 255) = c
-combineColor (Color r g b) (Color r' g' b') = Color (r+r' `div` 2) (g+g' `div` 2) (b+b' `div` 2)
-
-combine :: Picture -> Picture -> Picture
-combine p p' coord = combineColor (p coord) (p' coord)
-
-translate :: Int -> Int -> Picture -> Picture
-translate x y p (x', y') = p (x'-x,y'-y)
-
-getBoardPics :: Dimensions -> [Board] -> Picture
-getBoardPics d bs = go 0 $ map (boardPic d) bs
-  where go :: Int -> [Picture] -> Picture
-        go _ [] = const black
-        go count (p:ps) = translate 0 (totalWidth (size $ head bs) d * count) p `combine` go (count+1) ps
-
-grid :: Int -> Int -> [Picture] -> Picture
-grid picSize rowSize ps = pic
-  where pic (x,y)
-          | index < length ps = (ps !! index) (x `mod` picSize,y `mod` picSize)
+-- Combines a list of boards into a grid using the given picture factory function.
+grid :: [Picture] -> Int -> Picture
+grid [] _       = Picture (const white) 0 0
+grid ps rowSize = Picture gridPic gridW gridH
+  where Picture boardPic boardW boardH = head ps
+        gridW = boardW * rowSize
+        gridH = boardH * binaryRoundUp (/) (length ps) rowSize
+        gridPic (x,y)
+          | index < length ps = apply (x `mod` boardW,y `mod` boardH) (ps !! index)
           | otherwise = white
-          where index = (y `div` picSize) * rowSize + (x `div` picSize)
+          where index = (y `div` boardH) * rowSize + (x `div` boardW)
 
-renderResults :: Int -> Int -> String -> IO ()
-renderResults boardSize z =
-  render pic width height
-    where pic = grid picSize rowSize $ map (boardPic d) results
-          results = results boardSize
-          d = zoom z dimensions
-          picSize = totalWidth boardSize d
-          rowSize = unaryRoundUp sqrt $ length results
-          width = picSize * rowSize
-          height = binaryRoundUp (/) (length results) rowSize * picSize
-
-renderSimpleResults :: Int -> String -> IO ()
-renderSimpleResults boardSize =
-  render pic width height
-    where pic = grid picSize rowSize $ map (boardPicSimple squareSize) results
-          results = results boardSize
-          picSize = (boardSize + 2) * squareSize
-          rowSize = unaryRoundUp sqrt $ length results
-          width = picSize * rowSize
-          height = binaryRoundUp (/) (length results) rowSize * picSize
-          squareSize = 2
-
-
+-- Used to get height of a grid.
 binaryRoundUp :: RealFrac a => (a -> a-> a) -> Int -> Int -> Int
 binaryRoundUp op x y = ceiling $ op (fromIntegral x) (fromIntegral y)
 
+-- Produces a PNG of solutions for a nSquares x nSquares board.
+renderResults :: (Board -> Picture) -> Int -> String -> IO ()
+renderResults f nSquares =
+  render $ grid pics rowSize
+  where solutions = results nSquares
+        pics = map f solutions
+        rowSize = unaryRoundUp sqrt $ length solutions
+
+-- Used to get rowSize for a grid.
 unaryRoundUp :: RealFrac a => (a -> a) -> Int -> Int
 unaryRoundUp op x = ceiling . op $ fromIntegral x
 
+-- Render results for a board size.
 main :: IO ()
-main = print . length $ results 15
+main = print . length $ results 12
