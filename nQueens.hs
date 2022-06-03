@@ -207,5 +207,5 @@ main = do
   args <- getArgs
   renderResults
     (if length args > 1 && args !! 1 == "simple" then boardPicSimple 2 else boardPic dimensions)
-    (read $ head args)
+    (if not $ null args then read $ head args else 8)
     ("./images/results" ++ head args ++ ".png")
