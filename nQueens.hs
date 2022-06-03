@@ -14,33 +14,21 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 -- and safe is a list of unoccupied squares
 -- that cannot be seen by any Queen.
 type Coord = (Int, Int)
-type Board = (Int, [Coord], [Coord])
+data Board = Board {size :: Int, queens :: [Coord], safes :: [Coord]}
 
 -- Makes an empty board
 start :: Int -> Board
-start n = (n, [], [(x,y) | x <- range, y <- range])
+start n = Board n [] [(x,y) | x <- range, y <- range]
     where range = [0..(n-1)]
-
--- Returns the size of the board
-size :: Board -> Int
-size (s, _, _) = s
-
--- Gets the list of spaces that can receive a queen
-safes :: Board -> [Coord]
-safes (_, _, safeSquares) = safeSquares
-
--- Gets the list of coordinates of queens on the board
-queens :: Board -> [Coord]
-queens (_, queens, _) = queens
 
 -- Returns true if the coordinate is not occupied and not seen by any Queens.
 -- A linear search through an ordered list. There's probably a faster search in base/Prelude somewhere.
 isSafe :: Coord -> Board -> Bool
-isSafe coord (s, queens, []) = False
-isSafe coord (s, queens, safe:safes)
+isSafe coord (Board _ _ []) = False
+isSafe coord (Board s queens (safe:safes))
   | safe > coord = False
   | safe == coord = True
-  | otherwise = isSafe coord (s, queens, safes)
+  | otherwise = isSafe coord $ Board s queens safes
 
 -- Returns true if a queen can move from one coordinate to the other in one move
 sees :: Coord -> Coord -> Bool
@@ -54,8 +42,8 @@ sees (r, c) (r', c')
 -- Returns the board that results from placing a queen coord
 -- or Nothing if the coord is not available.
 placeQueen :: Coord -> Board -> Maybe Board
-placeQueen coord board
-  | isSafe coord board = Just (size board, coord:queens board, filter (not . sees coord) (safes board))
+placeQueen coord (Board s queens safes)
+  | isSafe coord (Board s queens safes) = Just $ Board s (coord:queens) (filter (not . sees coord) safes)
   | otherwise = Nothing
 
 -- From a starting position, returns all the possible finished boards
