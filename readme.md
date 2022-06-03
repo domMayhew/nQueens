@@ -13,3 +13,6 @@ E.g.,
 This module uses `Codec.Picture` from `JuicyPixels` to render PNGs.
 
 I previously made an inefficient nQueens solver thrown together from shower thoughts. I discovered a more powerful algorithm through [the University of Helsinki's Haskell MOOC course](https://haskell.mooc.fi/) (exercise set 9b). This module is based on their algorithm.
+
+## Artifacts
+Although the solution images are artifacts, I have included them for ease of use, and because the larger files take a long time to produce.
